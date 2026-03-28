@@ -4,21 +4,28 @@ struct GLFWwindow;
 
 namespace Nova {
 
-    class Application {
-    public:
-        Application(int width, int height, const char* title);
-        ~Application();
+class Application {
+public:
+    Application(int width, int height, const char* title);
+    ~Application();
 
-        void Run();
+    void Run();
 
-    private:
-        void Init();
-        void Shutdown();
-        void ProcessInput();
+private:
+    void Init();
+    void Shutdown();
+    void ProcessInput();
 
-        GLFWwindow* m_Window = nullptr;
-        int m_Width, m_Height;
-        const char* m_Title;
-    };
+    // ImGui
+    void ImGuiInit();
+    void ImGuiBeginFrame();
+    void ImGuiEndFrame();
+    void ImGuiShutdown();
+    void DrawEditorUI();
+
+    GLFWwindow* m_Window = nullptr;
+    int m_Width, m_Height;
+    const char* m_Title;
+};
 
 } // namespace Nova
