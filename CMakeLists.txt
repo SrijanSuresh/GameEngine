@@ -74,6 +74,7 @@ add_executable(NovaEngine
     src/Core/Renderer/Shader.cpp
     src/Core/Renderer/Camera.cpp
     src/Core/ECS/Scene.cpp
+    src/Generative/ShaderGenerator.cpp
 )
 
 target_include_directories(NovaEngine PRIVATE

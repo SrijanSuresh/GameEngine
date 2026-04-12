@@ -4,6 +4,7 @@
 
 #include "Application.h"
 #include "ECS/Components.h"
+#include "Generative/ShaderGenerator.h"
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -17,43 +18,38 @@
 #include <cstring>
 #include <stdexcept>
 #include <cstdio>
+#include <string>
 
 namespace Nova {
 
 // -----------------------------------------------------------------------------
-// Shader sources
-// Now includes u_Model, u_View, u_Projection so the camera works.
+// Default shader source (used for entities with no MaterialComponent)
 // -----------------------------------------------------------------------------
 
-static const char* s_VertSrc = R"(
+static const char* s_DefaultVertSrc = R"(
 #version 330 core
-
 layout(location = 0) in vec3 a_Position;
 layout(location = 1) in vec3 a_Color;
-
+out vec2 v_UV;
+out vec3 v_WorldPos;
 out vec3 v_Color;
-
-// MVP matrices — passed from the CPU every frame
-uniform mat4 u_Model;       // object transform (position, rotation, scale)
-uniform mat4 u_View;        // camera position and orientation
-uniform mat4 u_Projection;  // perspective (fov, aspect ratio)
-
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
 void main() {
-    v_Color = a_Color;
-
-    // Multiply position through model → view → projection
+    v_Color    = a_Color;
+    v_WorldPos = vec3(u_Model * vec4(a_Position, 1.0));
+    v_UV       = a_Position.xy + 0.5;
     gl_Position = u_Projection * u_View * u_Model * vec4(a_Position, 1.0);
 }
 )";
 
-static const char* s_FragSrc = R"(
+static const char* s_DefaultFragSrc = R"(
 #version 330 core
-
-in  vec3 v_Color;
+in vec3 v_Color;
+in vec2 v_UV;
 out vec4 FragColor;
-
 uniform float u_Time;
-
 void main() {
     float pulse = 0.5 + 0.5 * sin(u_Time * 2.0);
     FragColor   = vec4(v_Color * pulse, 1.0);
@@ -117,7 +113,6 @@ void Application::Init() {
     ImGuiInit();
     RendererInit();
 
-    // Create camera with 60° fov, 16:9 aspect, 0.1 near, 1000 far
     m_Camera = Camera(60.0f, 16.0f / 9.0f, 0.1f, 1000.0f);
 }
 
@@ -150,13 +145,13 @@ void Application::ProcessInput() {
 // -----------------------------------------------------------------------------
 
 void Application::RendererInit() {
-    m_Shader = Shader(s_VertSrc, s_FragSrc);
+    m_DefaultShader = Shader(s_DefaultVertSrc, s_DefaultFragSrc);
 
     float vertices[] = {
         // position           // color
-         0.0f,  0.5f,  0.0f,  1.0f, 0.2f, 0.3f,  // top   — red
-        -0.5f, -0.5f,  0.0f,  0.2f, 0.8f, 0.4f,  // left  — green
-         0.5f, -0.5f,  0.0f,  0.2f, 0.4f, 1.0f,  // right — blue
+         0.0f,  0.5f,  0.0f,  1.0f, 0.2f, 0.3f,
+        -0.5f, -0.5f,  0.0f,  0.2f, 0.8f, 0.4f,
+         0.5f, -0.5f,  0.0f,  0.2f, 0.4f, 1.0f,
     };
 
     GLuint vao = 0, vbo = 0;
@@ -167,19 +162,16 @@ void Application::RendererInit() {
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-    // position — location 0
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
                           6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // color — location 1, offset 3 floats
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE,
                           6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
 
-    // Create triangle entity
     entt::entity triangle = m_Scene.CreateEntity("Triangle");
     m_Scene.GetRegistry().emplace<MeshRendererComponent>(triangle, vao, vbo, 3);
     m_SelectedEntity = triangle;
@@ -203,47 +195,81 @@ void Application::RendererShutdown() {
 }
 
 // -----------------------------------------------------------------------------
-// RenderScene — draws all MeshRenderer entities using the camera matrices
+// RenderScene — uses per-entity MaterialComponent shader if present,
+//               otherwise falls back to the default shader
 // -----------------------------------------------------------------------------
 
 void Application::RenderScene() {
-    m_Shader.Bind();
-    m_Shader.SetFloat("u_Time",       m_Time);
-    m_Shader.SetMat4 ("u_View",       m_Camera.GetViewMatrix());
-    m_Shader.SetMat4 ("u_Projection", m_Camera.GetProjectionMatrix());
-
     auto view = m_Scene.GetRegistry().view<MeshRendererComponent, TransformComponent>();
 
     for (auto entity : view) {
         auto& mesh      = view.get<MeshRendererComponent>(entity);
         auto& transform = view.get<TransformComponent>(entity);
 
-        // Build the model matrix from TransformComponent:
-        // 1. Start with identity
-        // 2. Translate to position
-        // 3. Rotate around each axis
-        // 4. Scale
+        // Choose shader: generated material or default
+        Shader* shader = &m_DefaultShader;
+        auto& registry = m_Scene.GetRegistry();
+        if (registry.all_of<MaterialComponent>(entity)) {
+            auto& mat = registry.get<MaterialComponent>(entity);
+            if (mat.IsGenerated && mat.Mat && mat.Mat->IsValid())
+                shader = mat.Mat.get();
+        }
+
+        // Build model matrix from TransformComponent
         glm::mat4 model = glm::mat4(1.0f);
-
         model = glm::translate(model, transform.Position);
-
-        model = glm::rotate(model,
-            glm::radians(transform.Rotation.x), glm::vec3(1, 0, 0));
-        model = glm::rotate(model,
-            glm::radians(transform.Rotation.y), glm::vec3(0, 1, 0));
-        model = glm::rotate(model,
-            glm::radians(transform.Rotation.z), glm::vec3(0, 0, 1));
-
+        model = glm::rotate(model, glm::radians(transform.Rotation.x), glm::vec3(1,0,0));
+        model = glm::rotate(model, glm::radians(transform.Rotation.y), glm::vec3(0,1,0));
+        model = glm::rotate(model, glm::radians(transform.Rotation.z), glm::vec3(0,0,1));
         model = glm::scale(model, transform.Scale);
 
-        m_Shader.SetMat4("u_Model", model);
+        shader->Bind();
+        shader->SetFloat("u_Time",       m_Time);
+        shader->SetMat4 ("u_Model",      model);
+        shader->SetMat4 ("u_View",       m_Camera.GetViewMatrix());
+        shader->SetMat4 ("u_Projection", m_Camera.GetProjectionMatrix());
 
         glBindVertexArray(mesh.VAO);
         glDrawArrays(GL_TRIANGLES, 0, mesh.VertexCount);
         glBindVertexArray(0);
+
+        shader->Unbind();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// GenerateShaderForEntity
+// Builds GLSL from prompt, compiles it, attaches to entity's MaterialComponent
+// -----------------------------------------------------------------------------
+
+void Application::GenerateShaderForEntity(entt::entity entity, const std::string& prompt) {
+    m_LastShaderError = "";
+
+    // Generate GLSL source strings from the prompt
+    std::string vertSrc = ShaderGenerator::GetVertexSource();
+    std::string fragSrc = ShaderGenerator::Generate(prompt);
+
+    // Compile into a new Shader
+    auto newShader = std::make_shared<Shader>(vertSrc.c_str(), fragSrc.c_str());
+
+    if (!newShader->IsValid()) {
+        m_LastShaderError = "Shader compilation failed. Check console for GLSL errors.";
+        std::fprintf(stderr, "[Nova] Generated shader failed to compile for prompt: '%s'\n",
+                     prompt.c_str());
+        return;
     }
 
-    m_Shader.Unbind();
+    // Attach or update MaterialComponent on this entity
+    auto& registry = m_Scene.GetRegistry();
+    if (!registry.all_of<MaterialComponent>(entity))
+        registry.emplace<MaterialComponent>(entity);
+
+    auto& mat       = registry.get<MaterialComponent>(entity);
+    mat.Prompt      = prompt;
+    mat.Mat         = newShader;
+    mat.IsGenerated = true;
+
+    std::printf("[Nova] Generated shader for prompt: '%s'\n", prompt.c_str());
 }
 
 // -----------------------------------------------------------------------------
@@ -337,7 +363,7 @@ void Application::ImGuiEndFrame() {
 }
 
 // -----------------------------------------------------------------------------
-// DrawEditorUI
+// Editor panels
 // -----------------------------------------------------------------------------
 
 void Application::DrawEditorUI() {
@@ -368,11 +394,6 @@ void Application::DrawEditorUI() {
                 glfwSetWindowShouldClose(m_Window, true);
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("Edit")) {
-            ImGui::MenuItem("Undo", "Ctrl+Z");
-            ImGui::MenuItem("Redo", "Ctrl+Y");
-            ImGui::EndMenu();
-        }
         ImGui::EndMenuBar();
     }
 
@@ -386,10 +407,6 @@ void Application::DrawEditorUI() {
     DrawConsolePanel();
 }
 
-// -----------------------------------------------------------------------------
-// Hierarchy panel
-// -----------------------------------------------------------------------------
-
 void Application::DrawHierarchyPanel() {
     ImGui::Begin("Hierarchy");
 
@@ -402,7 +419,6 @@ void Application::DrawHierarchyPanel() {
     for (auto entity : view) {
         auto& tag        = view.get<TagComponent>(entity);
         bool  isSelected = (entity == m_SelectedEntity);
-
         if (ImGui::Selectable(tag.Name.c_str(), isSelected))
             m_SelectedEntity = entity;
     }
@@ -412,10 +428,6 @@ void Application::DrawHierarchyPanel() {
 
     ImGui::End();
 }
-
-// -----------------------------------------------------------------------------
-// Inspector panel
-// -----------------------------------------------------------------------------
 
 void Application::DrawInspectorPanel() {
     ImGui::Begin("Inspector");
@@ -460,12 +472,76 @@ void Application::DrawInspectorPanel() {
         }
     }
 
+    ImGui::Separator();
+
+    // ── Material (Generative Shader) ──────────────────────────────────────────
+    if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen)) {
+
+        // Show current prompt if one exists
+        std::string currentPrompt = "";
+        if (registry.all_of<MaterialComponent>(m_SelectedEntity))
+            currentPrompt = registry.get<MaterialComponent>(m_SelectedEntity).Prompt;
+
+        // Static buffer for the text input — persists across frames
+        static char promptBuf[256] = "";
+
+        // When a new entity is selected, sync the buffer to its current prompt
+        static entt::entity lastInspected = entt::null;
+        if (lastInspected != m_SelectedEntity) {
+            std::strncpy(promptBuf, currentPrompt.c_str(), sizeof(promptBuf));
+            lastInspected   = m_SelectedEntity;
+            m_LastShaderError = "";
+        }
+
+        // Hint text listing available keywords
+        ImGui::TextDisabled("Keywords: galaxy fire ocean nebula cyberpunk");
+        ImGui::TextDisabled("          lava aurora glitch plasma void");
+        ImGui::TextDisabled("Combine: \"fire galaxy\" blends both effects");
+        ImGui::Spacing();
+
+        // Text input — pressing Enter triggers generation
+        ImGui::SetNextItemWidth(-1.0f); // full width
+        bool pressedEnter = ImGui::InputText(
+            "##prompt", promptBuf, sizeof(promptBuf),
+            ImGuiInputTextFlags_EnterReturnsTrue
+        );
+
+        // Generate button OR Enter key both trigger generation
+        bool clickedGenerate = ImGui::Button("Generate  (or press Enter)");
+
+        if (pressedEnter || clickedGenerate) {
+            GenerateShaderForEntity(m_SelectedEntity, std::string(promptBuf));
+        }
+
+        // Show success or error state
+        if (!m_LastShaderError.empty()) {
+            ImGui::Spacing();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
+            ImGui::TextWrapped("%s", m_LastShaderError.c_str());
+            ImGui::PopStyleColor();
+        } else if (registry.all_of<MaterialComponent>(m_SelectedEntity)) {
+            auto& mat = registry.get<MaterialComponent>(m_SelectedEntity);
+            if (mat.IsGenerated) {
+                ImGui::Spacing();
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.3f, 1.0f, 0.5f, 1.0f));
+                ImGui::Text("✓ Shader active: \"%s\"", mat.Prompt.c_str());
+                ImGui::PopStyleColor();
+            }
+        }
+
+        // Clear button — removes generated material, reverts to default shader
+        if (registry.all_of<MaterialComponent>(m_SelectedEntity)) {
+            ImGui::Spacing();
+            if (ImGui::Button("Clear Material")) {
+                registry.remove<MaterialComponent>(m_SelectedEntity);
+                std::memset(promptBuf, 0, sizeof(promptBuf));
+                m_LastShaderError = "";
+            }
+        }
+    }
+
     ImGui::End();
 }
-
-// -----------------------------------------------------------------------------
-// Viewport panel
-// -----------------------------------------------------------------------------
 
 void Application::DrawViewportPanel() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
@@ -474,15 +550,12 @@ void Application::DrawViewportPanel() {
     ImVec2 viewportSize = ImGui::GetContentRegionAvail();
     ResizeFramebufferIfNeeded((int)viewportSize.x, (int)viewportSize.y);
 
-    // Update camera aspect ratio to match the viewport panel size
     if (viewportSize.y > 0)
         m_Camera.SetAspectRatio(viewportSize.x / viewportSize.y);
 
-    // Show a small hint when the viewport is hovered
     if (ImGui::IsWindowHovered())
         ImGui::SetTooltip("Right-click + drag to look\nWASD / Q / E to move");
 
-    // Display the FBO texture (flip UVs: OpenGL origin = bottom-left)
     ImGui::Image(
         (ImTextureID)(intptr_t)m_FBOColorTex,
         viewportSize,
@@ -494,15 +567,10 @@ void Application::DrawViewportPanel() {
     ImGui::PopStyleVar();
 }
 
-// -----------------------------------------------------------------------------
-// Console panel
-// -----------------------------------------------------------------------------
-
 void Application::DrawConsolePanel() {
     ImGui::Begin("Console");
-    ImGui::Text("[Nova] Time: %.2f  |  dt: %.4f  |  FPS: %.0f",
-        m_Time, m_DeltaTime, 1.0f / m_DeltaTime);
-    ImGui::Text("[Nova] Camera pos: (%.2f, %.2f, %.2f)",
+    ImGui::Text("[Nova] Time: %.2f  |  FPS: %.0f", m_Time, 1.0f / m_DeltaTime);
+    ImGui::Text("[Nova] Camera: (%.2f, %.2f, %.2f)",
         m_Camera.GetPosition().x,
         m_Camera.GetPosition().y,
         m_Camera.GetPosition().z);
@@ -517,34 +585,31 @@ void Application::DrawConsolePanel() {
 
 void Application::Run() {
     while (!glfwWindowShouldClose(m_Window)) {
-        // ── Timing ────────────────────────────────────────────────────────────
         m_Time      = (float)glfwGetTime();
         m_DeltaTime = m_Time - m_LastTime;
         m_LastTime  = m_Time;
 
         ProcessInput();
-
-        // Update camera — pass window for input and deltaTime for speed
         m_Camera.OnUpdate(m_Window, m_DeltaTime);
 
-        // ── Render scene into FBO ─────────────────────────────────────────────
+        // Render scene into FBO
         glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
         glViewport(0, 0, m_FBOWidth, m_FBOHeight);
-        glEnable(GL_DEPTH_TEST); // enable depth so 3D objects sort correctly
+        glEnable(GL_DEPTH_TEST);
         glClearColor(0.12f, 0.12f, 0.15f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         RenderScene();
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        // ── Clear main window ─────────────────────────────────────────────────
+        // Clear main window
         int w, h;
         glfwGetFramebufferSize(m_Window, &w, &h);
         glViewport(0, 0, w, h);
-        glDisable(GL_DEPTH_TEST); // ImGui doesn't need depth test
+        glDisable(GL_DEPTH_TEST);
         glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        // ── Draw editor UI ────────────────────────────────────────────────────
+        // Draw editor UI
         ImGuiBeginFrame();
         DrawEditorUI();
         ImGuiEndFrame();

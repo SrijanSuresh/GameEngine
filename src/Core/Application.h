@@ -2,9 +2,6 @@
 
 // -----------------------------------------------------------------------------
 // Application.h
-//
-// The Application owns the window, OpenGL context, editor UI, active Scene,
-// and the editor Camera. The main loop lives here.
 // -----------------------------------------------------------------------------
 
 #include "Renderer/Shader.h"
@@ -26,7 +23,6 @@ public:
     void Run();
 
 private:
-    // Core lifecycle
     void Init();
     void Shutdown();
     void ProcessInput();
@@ -49,6 +45,9 @@ private:
     void RendererShutdown();
     void RenderScene();
 
+    // Generative shader — compiles a new shader from prompt for selected entity
+    void GenerateShaderForEntity(entt::entity entity, const std::string& prompt);
+
     // Framebuffer
     void CreateFramebuffer(int width, int height);
     void DestroyFramebuffer();
@@ -61,19 +60,14 @@ private:
     int         m_Height;
     const char* m_Title;
 
-    // Active scene — owns all entities
-    Scene m_Scene;
-
-    // Selected entity in the Hierarchy (entt::null = nothing selected)
+    Scene        m_Scene;
     entt::entity m_SelectedEntity = entt::null;
+    Camera       m_Camera;
 
-    // Editor camera
-    Camera m_Camera;
+    // Default shader — used for entities without a MaterialComponent
+    Shader m_DefaultShader;
 
-    // Shader for all mesh renderers (will become a material system later)
-    Shader m_Shader;
-
-    // Framebuffer — scene renders here, then displayed in Viewport panel
+    // Framebuffer
     GLuint m_FBO         = 0;
     GLuint m_FBOColorTex = 0;
     GLuint m_FBODepthRBO = 0;
@@ -83,7 +77,10 @@ private:
     // Timing
     float m_Time      = 0.0f;
     float m_LastTime  = 0.0f;
-    float m_DeltaTime = 0.0f; // seconds since last frame — used for camera speed
+    float m_DeltaTime = 0.0f;
+
+    // Stores the last shader compilation error for display in the Inspector
+    std::string m_LastShaderError = "";
 };
 
 } // namespace Nova
