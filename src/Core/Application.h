@@ -1,7 +1,17 @@
 #pragma once
 
-#include "Renderer/Shader.h"
+// -----------------------------------------------------------------------------
+// Application.h
+//
+// The Application owns the window, OpenGL context, editor UI, active Scene,
+// and the editor Camera. The main loop lives here.
+// -----------------------------------------------------------------------------
 
+#include "Renderer/Shader.h"
+#include "Renderer/Camera.h"
+#include "ECS/Scene.h"
+
+#include <entt/entt.hpp>
 #include <glad/glad.h>
 
 struct GLFWwindow;
@@ -16,6 +26,7 @@ public:
     void Run();
 
 private:
+    // Core lifecycle
     void Init();
     void Shutdown();
     void ProcessInput();
@@ -27,6 +38,12 @@ private:
     void ImGuiShutdown();
     void DrawEditorUI();
 
+    // Editor panels
+    void DrawHierarchyPanel();
+    void DrawInspectorPanel();
+    void DrawViewportPanel();
+    void DrawConsolePanel();
+
     // Renderer
     void RendererInit();
     void RendererShutdown();
@@ -37,16 +54,26 @@ private:
     void DestroyFramebuffer();
     void ResizeFramebufferIfNeeded(int width, int height);
 
+    // ── Data ──────────────────────────────────────────────────────────────────
+
     GLFWwindow* m_Window = nullptr;
-    int m_Width, m_Height;
+    int         m_Width;
+    int         m_Height;
     const char* m_Title;
 
-    // Triangle
-    GLuint m_VAO = 0;
-    GLuint m_VBO = 0;
+    // Active scene — owns all entities
+    Scene m_Scene;
+
+    // Selected entity in the Hierarchy (entt::null = nothing selected)
+    entt::entity m_SelectedEntity = entt::null;
+
+    // Editor camera
+    Camera m_Camera;
+
+    // Shader for all mesh renderers (will become a material system later)
     Shader m_Shader;
 
-    // Framebuffer
+    // Framebuffer — scene renders here, then displayed in Viewport panel
     GLuint m_FBO         = 0;
     GLuint m_FBOColorTex = 0;
     GLuint m_FBODepthRBO = 0;
@@ -54,7 +81,9 @@ private:
     int    m_FBOHeight   = 0;
 
     // Timing
-    float m_Time = 0.0f;
+    float m_Time      = 0.0f;
+    float m_LastTime  = 0.0f;
+    float m_DeltaTime = 0.0f; // seconds since last frame — used for camera speed
 };
 
 } // namespace Nova

@@ -59,11 +59,21 @@ target_include_directories(imgui_lib PUBLIC
 )
 target_link_libraries(imgui_lib PUBLIC glfw)
 
+# EnTT (header-only ECS)
+FetchContent_Declare(
+    entt
+    GIT_REPOSITORY https://github.com/skypjack/entt.git
+    GIT_TAG        v3.13.2
+)
+FetchContent_MakeAvailable(entt)
+
 # ── Sources ───────────────────────────────────────────────────────────────────
 add_executable(NovaEngine
     src/main.cpp
     src/Core/Application.cpp
     src/Core/Renderer/Shader.cpp
+    src/Core/Renderer/Camera.cpp
+    src/Core/ECS/Scene.cpp
 )
 
 target_include_directories(NovaEngine PRIVATE
@@ -76,6 +86,7 @@ target_link_libraries(NovaEngine PRIVATE
     glad
     glm::glm
     imgui_lib
+    EnTT::EnTT
     GL
     dl
 )
