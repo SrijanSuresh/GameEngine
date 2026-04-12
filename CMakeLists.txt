@@ -63,6 +63,7 @@ target_link_libraries(imgui_lib PUBLIC glfw)
 add_executable(NovaEngine
     src/main.cpp
     src/Core/Application.cpp
+    src/Core/Renderer/Shader.cpp
 )
 
 target_include_directories(NovaEngine PRIVATE
