@@ -18,7 +18,9 @@
 #include <cstring>
 #include <stdexcept>
 #include <cstdio>
+#include <sstream>
 #include <string>
+#include <algorithm>
 
 namespace Nova {
 
@@ -66,6 +68,49 @@ static void GLFWErrorCallback(int error, const char* description) {
 
 static void FramebufferSizeCallback(GLFWwindow* /*window*/, int width, int height) {
     glViewport(0, 0, width, height);
+}
+
+static std::string Trim(const std::string& value) {
+    const size_t first = value.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos)
+        return "";
+
+    const size_t last = value.find_last_not_of(" \t\r\n");
+    return value.substr(first, last - first + 1);
+}
+
+static std::string ToLower(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+        [](unsigned char c) { return (char)std::tolower(c); });
+    return value;
+}
+
+static bool StartsWith(const std::string& value, const std::string& prefix) {
+    return value.rfind(prefix, 0) == 0;
+}
+
+static bool TryParseVec3(const std::string& text, glm::vec3& outVec) {
+    std::string normalized = text;
+    std::replace(normalized.begin(), normalized.end(), ',', ' ');
+
+    std::istringstream stream(normalized);
+    stream >> outVec.x >> outVec.y >> outVec.z;
+    return !stream.fail();
+}
+
+static entt::entity FindEntityByName(Scene& scene, const std::string& name) {
+    const std::string needle = ToLower(Trim(name));
+    if (needle.empty())
+        return entt::null;
+
+    auto view = scene.GetRegistry().view<TagComponent>();
+    for (auto entity : view) {
+        const auto& tag = view.get<TagComponent>(entity);
+        if (ToLower(tag.Name) == needle)
+            return entity;
+    }
+
+    return entt::null;
 }
 
 // -----------------------------------------------------------------------------
@@ -146,35 +191,7 @@ void Application::ProcessInput() {
 
 void Application::RendererInit() {
     m_DefaultShader = Shader(s_DefaultVertSrc, s_DefaultFragSrc);
-
-    float vertices[] = {
-        // position           // color
-         0.0f,  0.5f,  0.0f,  1.0f, 0.2f, 0.3f,
-        -0.5f, -0.5f,  0.0f,  0.2f, 0.8f, 0.4f,
-         0.5f, -0.5f,  0.0f,  0.2f, 0.4f, 1.0f,
-    };
-
-    GLuint vao = 0, vbo = 0;
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
-
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
-                          6 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE,
-                          6 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindVertexArray(0);
-
-    entt::entity triangle = m_Scene.CreateEntity("Triangle");
-    m_Scene.GetRegistry().emplace<MeshRendererComponent>(triangle, vao, vbo, 3);
-    m_SelectedEntity = triangle;
+    m_SelectedEntity = CreateTriangleEntity("Triangle");
 
     CreateFramebuffer(1280, 720);
 }
@@ -192,6 +209,51 @@ void Application::RendererShutdown() {
         if (mesh.VAO) glDeleteVertexArrays(1, &mesh.VAO);
         if (mesh.VBO) glDeleteBuffers(1,      &mesh.VBO);
     }
+}
+
+entt::entity Application::CreateTriangleEntity(const std::string& name) {
+    static constexpr float kTriangleVertices[] = {
+        // position           // color
+         0.0f,  0.5f,  0.0f,  1.0f, 0.2f, 0.3f,
+        -0.5f, -0.5f,  0.0f,  0.2f, 0.8f, 0.4f,
+         0.5f, -0.5f,  0.0f,  0.2f, 0.4f, 1.0f,
+    };
+
+    GLuint vao = 0;
+    GLuint vbo = 0;
+    glGenVertexArrays(1, &vao);
+    glGenBuffers(1, &vbo);
+
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(kTriangleVertices), kTriangleVertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    entt::entity entity = m_Scene.CreateEntity(name);
+    m_Scene.GetRegistry().emplace<MeshRendererComponent>(entity, vao, vbo, 3);
+    return entity;
+}
+
+void Application::DestroyEntity(entt::entity entity) {
+    if (!m_Scene.IsValid(entity))
+        return;
+
+    auto& registry = m_Scene.GetRegistry();
+    if (registry.all_of<MeshRendererComponent>(entity)) {
+        auto& mesh = registry.get<MeshRendererComponent>(entity);
+        if (mesh.VAO) glDeleteVertexArrays(1, &mesh.VAO);
+        if (mesh.VBO) glDeleteBuffers(1, &mesh.VBO);
+    }
+
+    m_Scene.DestroyEntity(entity);
 }
 
 // -----------------------------------------------------------------------------
@@ -270,6 +332,177 @@ void Application::GenerateShaderForEntity(entt::entity entity, const std::string
     mat.IsGenerated = true;
 
     std::printf("[Nova] Generated shader for prompt: '%s'\n", prompt.c_str());
+}
+
+bool Application::ExecutePromptCommand(const std::string& command) {
+    const std::string trimmed = Trim(command);
+    const std::string lower   = ToLower(trimmed);
+
+    if (trimmed.empty()) {
+        m_CommandStatus = "Type a command first.";
+        m_CommandHadError = true;
+        return false;
+    }
+
+    if ((StartsWith(lower, "create ") || StartsWith(lower, "spawn ") || StartsWith(lower, "add ")) &&
+        lower.find("triangle") != std::string::npos) {
+        std::string name;
+        const size_t namedPos = lower.find(" named ");
+        if (namedPos != std::string::npos)
+            name = Trim(trimmed.substr(namedPos + 7));
+
+        if (name.empty())
+            name = "Triangle " + std::to_string(++m_EntityCounter);
+
+        m_SelectedEntity = CreateTriangleEntity(name);
+        m_CommandStatus = "Created triangle \"" + name + "\".";
+        m_CommandHadError = false;
+        return true;
+    }
+
+    if (lower == "delete selected") {
+        if (m_SelectedEntity == entt::null || !m_Scene.IsValid(m_SelectedEntity)) {
+            m_CommandStatus = "No selected entity to delete.";
+            m_CommandHadError = true;
+            return false;
+        }
+
+        std::string deletedName = "entity";
+        if (m_Scene.GetRegistry().all_of<TagComponent>(m_SelectedEntity))
+            deletedName = m_Scene.GetRegistry().get<TagComponent>(m_SelectedEntity).Name;
+
+        DestroyEntity(m_SelectedEntity);
+        m_SelectedEntity = entt::null;
+        m_CommandStatus = "Deleted \"" + deletedName + "\".";
+        m_CommandHadError = false;
+        return true;
+    }
+
+    if (StartsWith(lower, "delete ")) {
+        const std::string name = Trim(trimmed.substr(7));
+        entt::entity entity = FindEntityByName(m_Scene, name);
+        if (entity == entt::null) {
+            m_CommandStatus = "Couldn't find an entity named \"" + name + "\".";
+            m_CommandHadError = true;
+            return false;
+        }
+
+        DestroyEntity(entity);
+        if (entity == m_SelectedEntity)
+            m_SelectedEntity = entt::null;
+
+        m_CommandStatus = "Deleted \"" + name + "\".";
+        m_CommandHadError = false;
+        return true;
+    }
+
+    if (StartsWith(lower, "select ")) {
+        const std::string name = Trim(trimmed.substr(7));
+        entt::entity entity = FindEntityByName(m_Scene, name);
+        if (entity == entt::null) {
+            m_CommandStatus = "Couldn't find an entity named \"" + name + "\".";
+            m_CommandHadError = true;
+            return false;
+        }
+
+        m_SelectedEntity = entity;
+        m_CommandStatus = "Selected \"" + name + "\".";
+        m_CommandHadError = false;
+        return true;
+    }
+
+    if (StartsWith(lower, "rename selected to ")) {
+        if (m_SelectedEntity == entt::null || !m_Scene.IsValid(m_SelectedEntity)) {
+            m_CommandStatus = "Select an entity before renaming it.";
+            m_CommandHadError = true;
+            return false;
+        }
+
+        const std::string name = Trim(trimmed.substr(19));
+        if (name.empty()) {
+            m_CommandStatus = "Give the selected entity a new name.";
+            m_CommandHadError = true;
+            return false;
+        }
+
+        m_Scene.GetRegistry().get<TagComponent>(m_SelectedEntity).Name = name;
+        m_CommandStatus = "Renamed the selected entity to \"" + name + "\".";
+        m_CommandHadError = false;
+        return true;
+    }
+
+    if (StartsWith(lower, "move selected to ")) {
+        if (m_SelectedEntity == entt::null || !m_Scene.IsValid(m_SelectedEntity)) {
+            m_CommandStatus = "Select an entity before moving it.";
+            m_CommandHadError = true;
+            return false;
+        }
+
+        glm::vec3 position;
+        if (!TryParseVec3(trimmed.substr(17), position)) {
+            m_CommandStatus = "Use three numbers for move commands, like: move selected to 1 2 0";
+            m_CommandHadError = true;
+            return false;
+        }
+
+        m_Scene.GetRegistry().get<TransformComponent>(m_SelectedEntity).Position = position;
+        m_CommandStatus = "Moved the selected entity.";
+        m_CommandHadError = false;
+        return true;
+    }
+
+    if (StartsWith(lower, "move ")) {
+        const size_t toPos = lower.find(" to ");
+        if (toPos != std::string::npos) {
+            const std::string name = Trim(trimmed.substr(5, toPos - 5));
+            glm::vec3 position;
+            if (!TryParseVec3(trimmed.substr(toPos + 4), position)) {
+                m_CommandStatus = "Use three numbers for move commands, like: move Player to 1 2 0";
+                m_CommandHadError = true;
+                return false;
+            }
+
+            entt::entity entity = FindEntityByName(m_Scene, name);
+            if (entity == entt::null) {
+                m_CommandStatus = "Couldn't find an entity named \"" + name + "\".";
+                m_CommandHadError = true;
+                return false;
+            }
+
+            m_Scene.GetRegistry().get<TransformComponent>(entity).Position = position;
+            m_SelectedEntity = entity;
+            m_CommandStatus = "Moved \"" + name + "\".";
+            m_CommandHadError = false;
+            return true;
+        }
+    }
+
+    if (StartsWith(lower, "material ")) {
+        if (m_SelectedEntity == entt::null || !m_Scene.IsValid(m_SelectedEntity)) {
+            m_CommandStatus = "Select an entity before applying a material prompt.";
+            m_CommandHadError = true;
+            return false;
+        }
+
+        const std::string prompt = Trim(trimmed.substr(9));
+        if (prompt.empty()) {
+            m_CommandStatus = "Type a material description after the word material.";
+            m_CommandHadError = true;
+            return false;
+        }
+
+        GenerateShaderForEntity(m_SelectedEntity, prompt);
+        m_CommandHadError = !m_LastShaderError.empty();
+        m_CommandStatus = m_CommandHadError
+            ? m_LastShaderError
+            : "Applied material prompt \"" + prompt + "\".";
+        return !m_CommandHadError;
+    }
+
+    m_CommandStatus =
+        "Unknown command. Try create triangle named Player, select Player, move selected to 1 0 0, or material fire galaxy.";
+    m_CommandHadError = true;
+    return false;
 }
 
 // -----------------------------------------------------------------------------
@@ -404,14 +637,19 @@ void Application::DrawEditorUI() {
     DrawHierarchyPanel();
     DrawInspectorPanel();
     DrawViewportPanel();
+    DrawPromptPanel();
     DrawConsolePanel();
 }
 
 void Application::DrawHierarchyPanel() {
     ImGui::Begin("Hierarchy");
 
-    if (ImGui::Button("+ Add Entity"))
-        m_Scene.CreateEntity("New Entity");
+    if (ImGui::Button("+ Add Entity")) {
+        const std::string name = "Triangle " + std::to_string(++m_EntityCounter);
+        m_SelectedEntity = CreateTriangleEntity(name);
+        m_CommandStatus = "Created triangle \"" + name + "\" from the hierarchy.";
+        m_CommandHadError = false;
+    }
 
     ImGui::Separator();
 
@@ -443,8 +681,8 @@ void Application::DrawInspectorPanel() {
     // ── Tag ───────────────────────────────────────────────────────────────────
     if (registry.all_of<TagComponent>(m_SelectedEntity)) {
         auto& tag = registry.get<TagComponent>(m_SelectedEntity);
-        char  nameBuf[256];
-        std::strncpy(nameBuf, tag.Name.c_str(), sizeof(nameBuf));
+        char  nameBuf[256] = {};
+        std::snprintf(nameBuf, sizeof(nameBuf), "%s", tag.Name.c_str());
         if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf)))
             tag.Name = nameBuf;
     }
@@ -488,7 +726,7 @@ void Application::DrawInspectorPanel() {
         // When a new entity is selected, sync the buffer to its current prompt
         static entt::entity lastInspected = entt::null;
         if (lastInspected != m_SelectedEntity) {
-            std::strncpy(promptBuf, currentPrompt.c_str(), sizeof(promptBuf));
+            std::snprintf(promptBuf, sizeof(promptBuf), "%s", currentPrompt.c_str());
             lastInspected   = m_SelectedEntity;
             m_LastShaderError = "";
         }
@@ -569,13 +807,55 @@ void Application::DrawViewportPanel() {
 
 void Application::DrawConsolePanel() {
     ImGui::Begin("Console");
-    ImGui::Text("[Nova] Time: %.2f  |  FPS: %.0f", m_Time, 1.0f / m_DeltaTime);
+    const float fps = (m_DeltaTime > 0.0f) ? (1.0f / m_DeltaTime) : 0.0f;
+    ImGui::Text("[Nova] Time: %.2f  |  FPS: %.0f", m_Time, fps);
     ImGui::Text("[Nova] Camera: (%.2f, %.2f, %.2f)",
         m_Camera.GetPosition().x,
         m_Camera.GetPosition().y,
         m_Camera.GetPosition().z);
     ImGui::Text("[Nova] Entities: %d",
-        (int)m_Scene.GetRegistry().storage<entt::entity>().in_use());
+        (int)m_Scene.GetRegistry().storage<entt::entity>().size());
+    if (!m_CommandStatus.empty())
+        ImGui::TextWrapped("[Nova] Prompt: %s", m_CommandStatus.c_str());
+    ImGui::End();
+}
+
+void Application::DrawPromptPanel() {
+    ImGui::Begin("Prompt");
+
+    ImGui::TextWrapped("Drive scene editing with simple commands. This is the first step toward a full prompt-first workflow.");
+    ImGui::TextDisabled("Examples:");
+    ImGui::BulletText("create triangle named Player");
+    ImGui::BulletText("select Player");
+    ImGui::BulletText("move selected to 1 0 0");
+    ImGui::BulletText("material aurora glitch");
+    ImGui::BulletText("delete selected");
+    ImGui::Spacing();
+
+    static char commandBuf[256] = "";
+    ImGui::SetNextItemWidth(-1.0f);
+    const bool pressedEnter = ImGui::InputText(
+        "##scene-command",
+        commandBuf,
+        sizeof(commandBuf),
+        ImGuiInputTextFlags_EnterReturnsTrue
+    );
+
+    const bool clickedRun = ImGui::Button("Run Command");
+    if (pressedEnter || clickedRun) {
+        ExecutePromptCommand(commandBuf);
+    }
+
+    if (!m_CommandStatus.empty()) {
+        ImGui::Spacing();
+        const ImVec4 color = m_CommandHadError
+            ? ImVec4(1.0f, 0.35f, 0.35f, 1.0f)
+            : ImVec4(0.35f, 1.0f, 0.55f, 1.0f);
+        ImGui::PushStyleColor(ImGuiCol_Text, color);
+        ImGui::TextWrapped("%s", m_CommandStatus.c_str());
+        ImGui::PopStyleColor();
+    }
+
     ImGui::End();
 }
 

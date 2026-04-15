@@ -11,6 +11,8 @@
 #include <entt/entt.hpp>
 #include <glad/glad.h>
 
+#include <string>
+
 struct GLFWwindow;
 
 namespace Nova {
@@ -39,11 +41,15 @@ private:
     void DrawInspectorPanel();
     void DrawViewportPanel();
     void DrawConsolePanel();
+    void DrawPromptPanel();
 
     // Renderer
     void RendererInit();
     void RendererShutdown();
     void RenderScene();
+    entt::entity CreateTriangleEntity(const std::string& name);
+    void DestroyEntity(entt::entity entity);
+    bool ExecutePromptCommand(const std::string& command);
 
     // Generative shader — compiles a new shader from prompt for selected entity
     void GenerateShaderForEntity(entt::entity entity, const std::string& prompt);
@@ -81,6 +87,9 @@ private:
 
     // Stores the last shader compilation error for display in the Inspector
     std::string m_LastShaderError = "";
+    std::string m_CommandStatus   = "";
+    bool        m_CommandHadError = false;
+    int         m_EntityCounter   = 1;
 };
 
 } // namespace Nova

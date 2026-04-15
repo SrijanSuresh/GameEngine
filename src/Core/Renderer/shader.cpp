@@ -7,7 +7,7 @@
 
 namespace Nova {
 
-// ── Constructor ───────────────────────────────────────────────────────────────
+// Constructor
 
 Shader::Shader(const char* vertSrc, const char* fragSrc) {
     GLuint vert = CompileShader(GL_VERTEX_SHADER,   vertSrc);
@@ -41,7 +41,7 @@ Shader::~Shader() {
     }
 }
 
-// ── Move semantics ────────────────────────────────────────────────────────────
+// Move semantics
 
 Shader::Shader(Shader&& other) noexcept
     : m_Program(other.m_Program)
@@ -58,12 +58,12 @@ Shader& Shader::operator=(Shader&& other) noexcept {
     return *this;
 }
 
-// ── Bind / Unbind ─────────────────────────────────────────────────────────────
+// Bind / Unbind
 
 void Shader::Bind()   const { glUseProgram(m_Program); }
 void Shader::Unbind() const { glUseProgram(0); }
 
-// ── Uniforms ──────────────────────────────────────────────────────────────────
+// Uniforms
 
 GLint Shader::GetUniformLocation(const char* name) const {
     GLint loc = glGetUniformLocation(m_Program, name);
@@ -79,7 +79,7 @@ void Shader::SetVec3 (const char* name, const glm::vec3& value)  const { glUnifo
 void Shader::SetVec4 (const char* name, const glm::vec4& value)  const { glUniform4fv(GetUniformLocation(name), 1, glm::value_ptr(value)); }
 void Shader::SetMat4 (const char* name, const glm::mat4& value)  const { glUniformMatrix4fv(GetUniformLocation(name), 1, GL_FALSE, glm::value_ptr(value)); }
 
-// ── Private: compile single stage ────────────────────────────────────────────
+// Private: compile single stage
 
 GLuint Shader::CompileShader(GLenum type, const char* src) {
     GLuint shader = glCreateShader(type);
