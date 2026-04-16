@@ -18,6 +18,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <cstdio>
+#include <cmath>
 #include <sstream>
 #include <string>
 #include <algorithm>
@@ -111,6 +112,15 @@ static entt::entity FindEntityByName(Scene& scene, const std::string& name) {
     }
 
     return entt::null;
+}
+
+static ImVec4 LerpColor(const ImVec4& a, const ImVec4& b, float t) {
+    return ImVec4(
+        a.x + (b.x - a.x) * t,
+        a.y + (b.y - a.y) * t,
+        a.z + (b.z - a.z) * t,
+        a.w + (b.w - a.w) * t
+    );
 }
 
 // -----------------------------------------------------------------------------
@@ -564,18 +574,135 @@ void Application::ImGuiInit() {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    ImGui::StyleColorsDark();
-
     ImGuiStyle& style       = ImGui::GetStyle();
-    style.WindowRounding    = 4.0f;
-    style.FrameRounding     = 3.0f;
-    style.FramePadding      = ImVec2(6, 4);
-    style.ItemSpacing       = ImVec2(8, 4);
-    style.ScrollbarRounding = 3.0f;
-    style.TabRounding       = 3.0f;
+    style.WindowRounding    = 16.0f;
+    style.ChildRounding     = 14.0f;
+    style.FrameRounding     = 10.0f;
+    style.PopupRounding     = 12.0f;
+    style.ScrollbarRounding = 12.0f;
+    style.GrabRounding      = 10.0f;
+    style.TabRounding       = 10.0f;
+    style.WindowPadding     = ImVec2(14.0f, 12.0f);
+    style.FramePadding      = ImVec2(10.0f, 8.0f);
+    style.ItemSpacing       = ImVec2(10.0f, 8.0f);
+    style.ItemInnerSpacing  = ImVec2(8.0f, 6.0f);
+    style.WindowBorderSize  = 0.0f;
+    style.ChildBorderSize   = 0.0f;
+    style.FrameBorderSize   = 0.0f;
+    style.TabBorderSize     = 0.0f;
+    style.IndentSpacing     = 18.0f;
+
+    ApplyTheme();
 
     ImGui_ImplGlfw_InitForOpenGL(m_Window, true);
     ImGui_ImplOpenGL3_Init("#version 330 core");
+}
+
+void Application::ApplyTheme() {
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImVec4* colors = style.Colors;
+
+    const float t = m_ThemeBlend;
+
+    const ImVec4 inkWindow   = ImVec4(0.08f, 0.10f, 0.14f, 0.96f);
+    const ImVec4 mistWindow  = ImVec4(0.95f, 0.96f, 0.98f, 0.96f);
+    const ImVec4 inkPanel    = ImVec4(0.11f, 0.14f, 0.19f, 0.96f);
+    const ImVec4 mistPanel   = ImVec4(0.98f, 0.985f, 0.995f, 0.97f);
+    const ImVec4 inkSurface  = ImVec4(0.15f, 0.18f, 0.24f, 1.0f);
+    const ImVec4 mistSurface = ImVec4(0.90f, 0.93f, 0.97f, 1.0f);
+    const ImVec4 inkAccent   = ImVec4(0.37f, 0.67f, 0.95f, 1.0f);
+    const ImVec4 mistAccent  = ImVec4(0.18f, 0.48f, 0.91f, 1.0f);
+    const ImVec4 inkHover    = ImVec4(0.45f, 0.74f, 0.98f, 1.0f);
+    const ImVec4 mistHover   = ImVec4(0.29f, 0.58f, 0.95f, 1.0f);
+    const ImVec4 inkText     = ImVec4(0.92f, 0.95f, 0.99f, 1.0f);
+    const ImVec4 mistText    = ImVec4(0.16f, 0.20f, 0.28f, 1.0f);
+    const ImVec4 inkMuted    = ImVec4(0.59f, 0.67f, 0.79f, 1.0f);
+    const ImVec4 mistMuted   = ImVec4(0.45f, 0.51f, 0.61f, 1.0f);
+    const ImVec4 inkBorder   = ImVec4(0.27f, 0.35f, 0.47f, 0.36f);
+    const ImVec4 mistBorder  = ImVec4(0.54f, 0.63f, 0.76f, 0.22f);
+
+    colors[ImGuiCol_Text]                 = LerpColor(inkText, mistText, t);
+    colors[ImGuiCol_TextDisabled]         = LerpColor(inkMuted, mistMuted, t);
+    colors[ImGuiCol_WindowBg]             = LerpColor(inkWindow, mistWindow, t);
+    colors[ImGuiCol_ChildBg]              = LerpColor(inkPanel, mistPanel, t);
+    colors[ImGuiCol_PopupBg]              = LerpColor(inkPanel, mistPanel, t);
+    colors[ImGuiCol_Border]               = LerpColor(inkBorder, mistBorder, t);
+    colors[ImGuiCol_BorderShadow]         = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    colors[ImGuiCol_FrameBg]              = LerpColor(inkSurface, mistSurface, t);
+    colors[ImGuiCol_FrameBgHovered]       = LerpColor(inkAccent, mistHover, t);
+    colors[ImGuiCol_FrameBgActive]        = LerpColor(inkHover, mistAccent, t);
+    colors[ImGuiCol_TitleBg]              = LerpColor(inkWindow, mistWindow, t);
+    colors[ImGuiCol_TitleBgActive]        = LerpColor(inkPanel, mistPanel, t);
+    colors[ImGuiCol_MenuBarBg]            = LerpColor(
+        ImVec4(0.06f, 0.08f, 0.12f, 0.98f),
+        ImVec4(0.93f, 0.95f, 0.98f, 0.98f),
+        t
+    );
+    colors[ImGuiCol_ScrollbarBg]          = LerpColor(inkWindow, mistWindow, t);
+    colors[ImGuiCol_ScrollbarGrab]        = LerpColor(inkSurface, mistSurface, t);
+    colors[ImGuiCol_ScrollbarGrabHovered] = LerpColor(inkAccent, mistHover, t);
+    colors[ImGuiCol_ScrollbarGrabActive]  = LerpColor(inkHover, mistAccent, t);
+    colors[ImGuiCol_CheckMark]            = LerpColor(inkHover, mistAccent, t);
+    colors[ImGuiCol_SliderGrab]           = LerpColor(inkAccent, mistAccent, t);
+    colors[ImGuiCol_SliderGrabActive]     = LerpColor(inkHover, mistHover, t);
+    colors[ImGuiCol_Button]               = LerpColor(
+        ImVec4(0.18f, 0.24f, 0.32f, 0.90f),
+        ImVec4(0.86f, 0.90f, 0.96f, 0.95f),
+        t
+    );
+    colors[ImGuiCol_ButtonHovered]        = LerpColor(inkAccent, mistHover, t);
+    colors[ImGuiCol_ButtonActive]         = LerpColor(inkHover, mistAccent, t);
+    colors[ImGuiCol_Header]               = LerpColor(
+        ImVec4(0.19f, 0.26f, 0.36f, 0.90f),
+        ImVec4(0.83f, 0.89f, 0.97f, 0.98f),
+        t
+    );
+    colors[ImGuiCol_HeaderHovered]        = LerpColor(inkAccent, mistHover, t);
+    colors[ImGuiCol_HeaderActive]         = LerpColor(inkHover, mistAccent, t);
+    colors[ImGuiCol_Separator]            = LerpColor(inkBorder, mistBorder, t);
+    colors[ImGuiCol_SeparatorHovered]     = LerpColor(inkAccent, mistAccent, t);
+    colors[ImGuiCol_SeparatorActive]      = LerpColor(inkHover, mistHover, t);
+    colors[ImGuiCol_ResizeGrip]           = LerpColor(inkBorder, mistBorder, t);
+    colors[ImGuiCol_ResizeGripHovered]    = LerpColor(inkAccent, mistAccent, t);
+    colors[ImGuiCol_ResizeGripActive]     = LerpColor(inkHover, mistHover, t);
+    colors[ImGuiCol_Tab]                  = LerpColor(
+        ImVec4(0.13f, 0.17f, 0.23f, 0.95f),
+        ImVec4(0.89f, 0.92f, 0.97f, 0.95f),
+        t
+    );
+    colors[ImGuiCol_TabHovered]           = LerpColor(inkAccent, mistHover, t);
+    colors[ImGuiCol_TabActive]            = LerpColor(
+        ImVec4(0.17f, 0.23f, 0.32f, 0.98f),
+        ImVec4(0.84f, 0.89f, 0.97f, 0.98f),
+        t
+    );
+    colors[ImGuiCol_TabUnfocused]         = LerpColor(inkWindow, mistWindow, t);
+    colors[ImGuiCol_TabUnfocusedActive]   = LerpColor(inkSurface, mistSurface, t);
+    colors[ImGuiCol_DockingEmptyBg]       = LerpColor(
+        ImVec4(0.05f, 0.07f, 0.10f, 1.0f),
+        ImVec4(0.91f, 0.94f, 0.98f, 1.0f),
+        t
+    );
+    colors[ImGuiCol_PlotLines]            = LerpColor(inkMuted, mistMuted, t);
+    colors[ImGuiCol_PlotLinesHovered]     = LerpColor(inkHover, mistHover, t);
+    colors[ImGuiCol_PlotHistogram]        = LerpColor(inkAccent, mistAccent, t);
+    colors[ImGuiCol_PlotHistogramHovered] = LerpColor(inkHover, mistHover, t);
+    colors[ImGuiCol_TextSelectedBg]       = LerpColor(
+        ImVec4(0.30f, 0.56f, 0.90f, 0.35f),
+        ImVec4(0.27f, 0.53f, 0.92f, 0.30f),
+        t
+    );
+}
+
+void Application::UpdateThemeAnimation() {
+    const float targetBlend = (m_Theme == EditorTheme::Mist) ? 1.0f : 0.0f;
+    const float blendSpeed = std::min(m_DeltaTime * 8.0f, 1.0f);
+    m_ThemeBlend += (targetBlend - m_ThemeBlend) * blendSpeed;
+
+    if (std::abs(targetBlend - m_ThemeBlend) < 0.001f)
+        m_ThemeBlend = targetBlend;
+
+    ApplyTheme();
 }
 
 void Application::ImGuiShutdown() {
@@ -588,6 +715,7 @@ void Application::ImGuiBeginFrame() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
+    UpdateThemeAnimation();
 }
 
 void Application::ImGuiEndFrame() {
@@ -627,6 +755,9 @@ void Application::DrawEditorUI() {
                 glfwSetWindowShouldClose(m_Window, true);
             ImGui::EndMenu();
         }
+
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 172.0f);
+        DrawThemeToggle();
         ImGui::EndMenuBar();
     }
 
@@ -639,6 +770,38 @@ void Application::DrawEditorUI() {
     DrawViewportPanel();
     DrawPromptPanel();
     DrawConsolePanel();
+}
+
+void Application::DrawThemeToggle() {
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 999.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 6.0f));
+
+    const bool inkActive  = (m_Theme == EditorTheme::Ink);
+    const bool mistActive = (m_Theme == EditorTheme::Mist);
+
+    if (inkActive) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    }
+    if (ImGui::Button("Ink")) {
+        m_Theme = EditorTheme::Ink;
+    }
+    if (inkActive) {
+        ImGui::PopStyleColor();
+    }
+
+    ImGui::SameLine(0.0f, 8.0f);
+
+    if (mistActive) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    }
+    if (ImGui::Button("Mist")) {
+        m_Theme = EditorTheme::Mist;
+    }
+    if (mistActive) {
+        ImGui::PopStyleColor();
+    }
+
+    ImGui::PopStyleVar(2);
 }
 
 void Application::DrawHierarchyPanel() {
@@ -794,6 +957,12 @@ void Application::DrawViewportPanel() {
     if (ImGui::IsWindowHovered())
         ImGui::SetTooltip("Right-click + drag to look\nWASD / Q / E to move");
 
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImVec2 min = ImGui::GetWindowPos();
+    const ImVec2 max = ImVec2(min.x + ImGui::GetWindowSize().x, min.y + ImGui::GetWindowSize().y);
+    const ImU32 frameColor = ImGui::GetColorU32(ImVec4(0.40f, 0.62f, 0.96f, 0.18f + 0.10f * (1.0f - m_ThemeBlend)));
+    drawList->AddRect(min, max, frameColor, 16.0f, 0, 2.0f);
+
     ImGui::Image(
         (ImTextureID)(intptr_t)m_FBOColorTex,
         viewportSize,
@@ -823,7 +992,7 @@ void Application::DrawConsolePanel() {
 void Application::DrawPromptPanel() {
     ImGui::Begin("Prompt");
 
-    ImGui::TextWrapped("Drive scene editing with simple commands. This is the first step toward a full prompt-first workflow.");
+    ImGui::TextWrapped("Drive scene editing with simple commands. Nova should feel closer to a creative desktop app than a heavy editor.");
     ImGui::TextDisabled("Examples:");
     ImGui::BulletText("create triangle named Player");
     ImGui::BulletText("select Player");
@@ -876,7 +1045,12 @@ void Application::Run() {
         glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
         glViewport(0, 0, m_FBOWidth, m_FBOHeight);
         glEnable(GL_DEPTH_TEST);
-        glClearColor(0.12f, 0.12f, 0.15f, 1.0f);
+        const ImVec4 sceneClear = LerpColor(
+            ImVec4(0.12f, 0.13f, 0.17f, 1.0f),
+            ImVec4(0.83f, 0.88f, 0.95f, 1.0f),
+            m_ThemeBlend
+        );
+        glClearColor(sceneClear.x, sceneClear.y, sceneClear.z, sceneClear.w);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         RenderScene();
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -886,7 +1060,12 @@ void Application::Run() {
         glfwGetFramebufferSize(m_Window, &w, &h);
         glViewport(0, 0, w, h);
         glDisable(GL_DEPTH_TEST);
-        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
+        const ImVec4 appClear = LerpColor(
+            ImVec4(0.06f, 0.08f, 0.11f, 1.0f),
+            ImVec4(0.92f, 0.95f, 0.985f, 1.0f),
+            m_ThemeBlend
+        );
+        glClearColor(appClear.x, appClear.y, appClear.z, appClear.w);
         glClear(GL_COLOR_BUFFER_BIT);
 
         // Draw editor UI

@@ -34,6 +34,8 @@ private:
     void ImGuiBeginFrame();
     void ImGuiEndFrame();
     void ImGuiShutdown();
+    void ApplyTheme();
+    void UpdateThemeAnimation();
     void DrawEditorUI();
 
     // Editor panels
@@ -42,6 +44,7 @@ private:
     void DrawViewportPanel();
     void DrawConsolePanel();
     void DrawPromptPanel();
+    void DrawThemeToggle();
 
     // Renderer
     void RendererInit();
@@ -58,6 +61,11 @@ private:
     void CreateFramebuffer(int width, int height);
     void DestroyFramebuffer();
     void ResizeFramebufferIfNeeded(int width, int height);
+
+    enum class EditorTheme {
+        Ink,
+        Mist
+    };
 
     // ── Data ──────────────────────────────────────────────────────────────────
 
@@ -90,6 +98,8 @@ private:
     std::string m_CommandStatus   = "";
     bool        m_CommandHadError = false;
     int         m_EntityCounter   = 1;
+    EditorTheme m_Theme           = EditorTheme::Ink;
+    float       m_ThemeBlend      = 0.0f;
 };
 
 } // namespace Nova
