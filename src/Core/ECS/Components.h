@@ -22,6 +22,11 @@
 
 namespace Nova {
 
+enum class PrimitiveType {
+    Triangle,
+    Quad
+};
+
 // -----------------------------------------------------------------------------
 // TagComponent — every entity has a human-readable name
 // -----------------------------------------------------------------------------
@@ -56,6 +61,22 @@ struct MeshRendererComponent {
     MeshRendererComponent() = default;
     MeshRendererComponent(GLuint vao, GLuint vbo, int vertexCount)
         : VAO(vao), VBO(vbo), VertexCount(vertexCount) {}
+};
+
+struct PrimitiveComponent {
+    PrimitiveType Type = PrimitiveType::Triangle;
+
+    PrimitiveComponent() = default;
+    explicit PrimitiveComponent(PrimitiveType type)
+        : Type(type) {}
+};
+
+struct ColorComponent {
+    glm::vec4 Tint = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+    ColorComponent() = default;
+    explicit ColorComponent(const glm::vec4& tint)
+        : Tint(tint) {}
 };
 
 // -----------------------------------------------------------------------------
