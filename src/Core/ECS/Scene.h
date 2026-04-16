@@ -35,9 +35,12 @@ public:
     // Returns the raw EnTT registry.
     // Systems and the editor use this to iterate and modify components.
     entt::registry& GetRegistry() { return m_Registry; }
+    const entt::registry& GetRegistry() const { return m_Registry; }
 
     // Returns true if the entity handle is still valid (not destroyed).
     bool IsValid(entt::entity entity) const { return m_Registry.valid(entity); }
+    entt::entity FindEntityByName(const std::string& name) const;
+    std::string GetEntityName(entt::entity entity) const;
 
 private:
     entt::registry m_Registry;

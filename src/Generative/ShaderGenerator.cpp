@@ -473,7 +473,8 @@ std::string ShaderGenerator::BuildFragmentSource(const std::vector<std::string>&
     out << "in vec3 v_WorldPos;\n";
     out << "in vec3 v_Color;\n";
     out << "out vec4 FragColor;\n\n";
-    out << "uniform float u_Time;\n\n";
+    out << "uniform float u_Time;\n";
+    out << "uniform vec4 u_TintColor;\n\n";
 
     // ── Shared utility functions ───────────────────────────────────────────────
     out << s_SharedGLSL << "\n";
@@ -481,7 +482,7 @@ std::string ShaderGenerator::BuildFragmentSource(const std::vector<std::string>&
     if (matched.empty()) {
         // No keywords recognized — fallback: solid color using vertex color
         out << "void main() {\n";
-        out << "    FragColor = vec4(v_Color, 1.0);\n";
+        out << "    FragColor = vec4(v_Color, 1.0) * u_TintColor;\n";
         out << "}\n";
         return out.str();
     }
@@ -503,7 +504,7 @@ std::string ShaderGenerator::BuildFragmentSource(const std::vector<std::string>&
             << "(uv, time) * " << weight << ";\n";
     }
 
-    out << "\n    FragColor = result;\n";
+    out << "\n    FragColor = vec4(result.rgb * u_TintColor.rgb, result.a * u_TintColor.a);\n";
     out << "}\n";
 
     return out.str();
