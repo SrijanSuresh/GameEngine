@@ -67,13 +67,23 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(entt)
 
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 # ── Sources ───────────────────────────────────────────────────────────────────
 add_executable(NovaEngine
     src/main.cpp
     src/Core/Application.cpp
+    src/Core/Commands/SceneCommandHistory.cpp
+    src/Core/Commands/SceneCommandParser.cpp
     src/Core/Renderer/Shader.cpp
     src/Core/Renderer/Camera.cpp
     src/Core/ECS/Scene.cpp
+    src/Core/Serialization/SceneSerializer.cpp
     src/Generative/ShaderGenerator.cpp
 )
 
@@ -88,6 +98,7 @@ target_link_libraries(NovaEngine PRIVATE
     glm::glm
     imgui_lib
     EnTT::EnTT
+    nlohmann_json::nlohmann_json
     GL
     dl
 )
